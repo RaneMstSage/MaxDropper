@@ -26,8 +26,105 @@ struct MaxDropperExporter (
                 local rot = obj.rotation as EulerAngles
                 json += "      \"rotation\": {\"x\": " + (rot.x as string) + ", \"y\": " + (rot.y as string) + ", \"z\": " + (rot.z as string) + "},\n"
 
-                json += "      \"scale\": {\"x\": " + (obj.scale.x as string) + ", \"y\": " + (obj.scale.y as string) + ", \"z\": " + (obj.scale.z as string) + "}\n"
-                json += "    }"
+                json += "      \"scale\": {\"x\": " + (obj.scale.x as string) + ", \"y\": " + (obj.scale.y as string) + ", \"z\": " + (obj.scale.z as string) + "},\n"
+                
+                -- Add is_mesh flag (check if object is geometry)
+                local isMesh = (superClassOf obj == GeometryClass)
+                json += "      \"is_mesh\": " + (isMesh as string)
+
+                -- Add bounding box for mesh objects
+                if isMesh then (
+                    json += ",\n      \"bounds\": [\n"
+
+                    -- Get bounding box corners (8 points)
+                    local bmin = obj.min
+                    local bmax = obj.max
+
+                    -- Define 8 corners of bounding box
+                    json += "        [" + (bmin.x as string) + ", " + (bmin.y as string) + ", " + (bmin.z as string) + "],\n"
+                    json += "        [" + (bmax.x as string) + ", " + (bmin.y as string) + ", " + (bmin.z as string) + "],\n"
+                    json += "        [" + (bmin.x as string) + ", " + (bmax.y as string) + ", " + (bmin.z as string) + "],\n"
+                    json += "        [" + (bmax.x as string) + ", " + (bmax.y as string) + ", " + (bmin.z as string) + "],\n"
+                    json += "        [" + (bmin.x as string) + ", " + (bmin.y as string) + ", " + (bmax.z as string) + "],\n"
+                    json += "        [" + (bmax.x as string) + ", " + (bmin.y as string) + ", " + (bmax.z as string) + "],\n"
+                    json += "        [" + (bmin.x as string) + ", " + (bmax.y as string) + ", " + (bmax.z as string) + "],\n"
+                    json += "        [" + (bmax.x as string) + ", " + (bmax.y as string) + ", " + (bmax.z as string) + "]\n"
+                    json += "      ]"
+                )
+                
+                -- Add transformation matrix (4x4, row-major like Blender)
+                json += ",\n      \"matrix\": [\n        "
+                
+                local tm = obj.transform
+                local matrixVals = #()
+                
+                -- Extract matrix values in row-major order
+                -- Row 1
+                append matrixVals tm.row1.x
+                append matrixVals tm.row1.y
+                append matrixVals tm.row1.z
+                append matrixVals 0.0
+                -- Row 2
+                append matrixVals tm.row2.x
+                append matrixVals tm.row2.y
+                append matrixVals tm.row2.z
+                append matrixVals 0.0
+                -- Row 3
+                append matrixVals tm.row3.x
+                append matrixVals tm.row3.y
+                append matrixVals tm.row3.z
+                append matrixVals 0.0
+                -- Row 4 (translation)
+                append matrixVals tm.row4.x
+                append matrixVals tm.row4.y
+                append matrixVals tm.row4.z
+                append matrixVals 1.0
+                
+                -- Output matrix values
+                for i = 1 to matrixVals.count do (
+                    json += (matrixVals[i] as string)
+                    if i < matrixVals.count then json += ", "
+                    if mod i 4 == 0 and i < matrixVals.count then json += "\n        "
+                )
+                
+                json += "\n      ]"
+                
+                -- Add custom properties
+                local userProps = getUserPropBuffer obj
+                if userProps != "" and userProps != undefined then (
+                    -- Parse user properties (format: key=value, one per line)
+                    local lines = filterString userProps "\r\n"
+                    for line in lines do (
+                        local equalPos = findString line "="
+                        if equalPos != undefined then (
+                            local key = substring line 1 (equalPos - 1)
+                            local value = substring line (equalPos + 1) -1
+                            
+                            -- Trim spaces from key
+                            key = trimLeft (trimRight key)
+                            value = trimLeft (trimRight value)
+                            
+                            if key != "" then (
+                                json += ",\n      \"" + key + "\": "
+                                
+                                -- Check if value is boolean
+                                if value == "true" or value == "false" then (
+                                    json += value
+                                )
+                                -- Check if value is number
+                                else if (value as float) != undefined then (
+                                    json += value
+                                )
+                                -- Otherwise treat as string
+                                else (
+                                    json += "\"" + value + "\""
+                                )
+                            )
+                        )
+                    )
+                )
+                
+                json += "\n    }"
 
                 firstObj = false
             )
