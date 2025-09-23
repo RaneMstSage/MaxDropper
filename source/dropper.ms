@@ -1,6 +1,6 @@
 /* 
     MaxDropper - 3ds Max Scene Exporter
-    Version: 0.2.0
+    Version: 1.0.0
     Author: Kenneth Schuetz
     Description: Exports scene object data to JSON format with OBJ model export
 */
@@ -140,8 +140,18 @@ struct MaxDropperExporter (
     fn exportModels exportPath = (
         print "----------Begin Model Export----------"
         
-        -- Create Models directory path
-        local modelsPath = exportPath + "\\..\\Models"
+        -- Check for custom models path
+        local modelsPath
+        global maxDropperCustomModelsPath
+        if maxDropperCustomModelsPath != undefined then (
+            modelsPath = maxDropperCustomModelsPath
+            print ("Using custom models path: " + modelsPath)
+        ) else (
+            -- Default behavior - relative to JSON
+            modelsPath = exportPath + "\\..\\Models"
+            print ("Using default models path: " + modelsPath)
+        )
+        
         makeDir modelsPath all:true
         
         -- Track unique mesh names
@@ -214,6 +224,9 @@ struct MaxDropperExporter (
             print ("Note: Obj2Header v1.9d.exe not found at: " + obj2headerPath)
         )
         
+        -- Clear the custom path after use
+        maxDropperCustomModelsPath = undefined
+        
         return exportedCount
     ),
 
@@ -272,6 +285,22 @@ struct MaxDropperExporter (
 
 -- Create Instance
 global maxDropper = MaxDropperExporter()
+
+-- Create MacroScript for menu integration
+macroScript MaxDropperExport
+    category:"Export" 
+    buttonText:"MaxDropper Export" 
+    tooltip:"Export scene data with MaxDropper"
+(
+    on execute do (
+        if maxDropper == undefined then (
+            messageBox "MaxDropper not loaded!"
+        ) else (
+            -- Load UI
+            fileIn ((getDir #userScripts) + "\\MaxDropper\\dropper_ui.ms")
+        )
+    )
+)
 
 -- Example usage message
 print "MaxDropper loaded! Usage:"
