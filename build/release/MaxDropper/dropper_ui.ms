@@ -1,12 +1,12 @@
 /*
     MaxDropper UI - User Interface for MaxDropper
-    Version: 1.0.1
+    Version: 1.2.0
     Author: Kenneth Schuetz
-    Description: UI dialog for MaxDropper export functionality with working custom models path
+    Description: UI dialog for MaxDropper export functionality with scale control
 */
 
 -- UI Dialog for MaxDropper
-rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
+rollout MaxDropperDialog "MaxDropper Export" width:360 height:460
 (
     -- Export Format
     group "Export Format"
@@ -22,7 +22,7 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
         button   btn_browse "Browse..." width:70 align:#right offset:[0,-24]
     )
 
-    -- OBJ Export (these controls were missing in your script)
+    -- OBJ Export
     group "OBJ Export"
     (
         checkbox chk_exportObjs       "Export OBJ Models" checked:true
@@ -31,6 +31,20 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
         label    lbl_models "Models Folder:" align:#left enabled:false
         edittext txt_models "" width:250 align:#left enabled:false
         button   btn_browse_models "Browse..." width:70 align:#right offset:[0,-24] enabled:false
+        
+        -- Scale control
+        label    lbl_scale "Export Scale:" align:#left
+        spinner  spn_scale "" range:[0.001, 1000.0, 10.0] type:#float scale:0.01 fieldwidth:60 align:#left
+        dropdownlist ddl_presets "" items:#(
+            "Custom",
+            "1.0 (No scaling)",
+            "10.0 (Current project)",
+            "100.0 (m to cm)",
+            "0.01 (cm to m)",
+            "0.0254 (inches to m)",
+            "39.3701 (m to inches)"
+        ) width:150 align:#right offset:[0,-24]
+        label lbl_scale_hint "Scales OBJ vertices during export" align:#left offset:[0,-5]
     )
     
     -- Status
@@ -41,8 +55,8 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
     )
     
     -- Buttons
-    button btn_export "Export Scene" width:160 height:35 pos:[10,355]
-    button btn_close  "Close"        width:160 height:35 pos:[180,355]
+    button btn_export "Export Scene" width:160 height:35 pos:[10,415]
+    button btn_close  "Close"        width:160 height:35 pos:[180,415]
     
     -- Events
     on rdo_format changed state do
@@ -65,8 +79,12 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
     
     on chk_exportObjs changed state do
     (
-        -- enable/disable custom path controls together
+        -- enable/disable OBJ-related controls
         chk_customModelsPath.enabled = state
+        lbl_scale.enabled = state
+        spn_scale.enabled = state
+        ddl_presets.enabled = state
+        lbl_scale_hint.enabled = state
 
         local en = state and chk_customModelsPath.checked
         lbl_models.enabled        = en
@@ -92,6 +110,36 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
     (
         local folderPath = getSavePath caption:"Select Models Export Folder"
         if folderPath != undefined do txt_models.text = folderPath
+    )
+    
+    on ddl_presets selected idx do
+    (
+        case idx of
+        (
+            1: () -- Custom - don't change spinner
+            2: spn_scale.value = 1.0      -- No scaling
+            3: spn_scale.value = 10.0     -- Current project
+            4: spn_scale.value = 100.0    -- m to cm
+            5: spn_scale.value = 0.01     -- cm to m
+            6: spn_scale.value = 0.0254   -- inches to m
+            7: spn_scale.value = 39.3701  -- m to inches
+        )
+    )
+    
+    on spn_scale changed val do
+    (
+        -- When spinner changes, set dropdown to "Custom" unless it matches a preset
+        local presetIdx = case val of
+        (
+            1.0:     2
+            10.0:    3
+            100.0:   4
+            0.01:    5
+            0.0254:  6
+            39.3701: 7
+            default: 1
+        )
+        ddl_presets.selection = presetIdx
     )
     
     on btn_export pressed do
@@ -155,9 +203,14 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
         -- Reflect final path in UI
         txt_path.text = p
 
-        -- Wire UI → struct (don’t call model_export directly)
+        -- Wire UI → struct
         dropper.export_models = chk_exportObjs.checked
         dropper.models_dir    = if (chk_exportObjs.checked and chk_customModelsPath.checked) then txt_models.text else undefined
+        dropper.export_scale  = spn_scale.value  -- Set the scale value
+        
+        -- Report scale setting
+        if chk_exportObjs.checked then
+            format "Export scale set to: %\n" spn_scale.value
 
         -- Figure format and export
         local fmt = if rdo_format.state == 1 then "OPT_JSON" else "OPT_XML"
@@ -174,6 +227,8 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
             pb_progress.value = 100
             lbl_status.text   = "Export complete!"
             print ("MaxDropper export completed: " + p)
+            if chk_exportObjs.checked then
+                print ("OBJ models exported with scale: " + (spn_scale.value as string))
         )
         else
         (
@@ -193,12 +248,34 @@ rollout MaxDropperDialog "MaxDropper Export" width:360 height:400
 
         if dropper == undefined then
             lbl_status.text = "Warning: Dropper not loaded"
+        else
+        (
+            -- Set spinner to current dropper scale value
+            spn_scale.value = dropper.export_scale
+        )
 
         -- sync OBJ path controls with initial checkbox states
         chk_customModelsPath.enabled = chk_exportObjs.checked
+        lbl_scale.enabled = chk_exportObjs.checked
+        spn_scale.enabled = chk_exportObjs.checked
+        ddl_presets.enabled = chk_exportObjs.checked
+        lbl_scale_hint.enabled = chk_exportObjs.checked
         lbl_models.enabled           = false
         txt_models.enabled           = false
         btn_browse_models.enabled    = false
+        
+        -- Set initial dropdown selection based on scale value
+        local presetIdx = case spn_scale.value of
+        (
+            1.0:     2
+            10.0:    3
+            100.0:   4
+            0.01:    5
+            0.0254:  6
+            39.3701: 7
+            default: 1
+        )
+        ddl_presets.selection = presetIdx
     )
 )
 
@@ -234,4 +311,4 @@ ShowMaxDropperUI()
 -- Usage message
 print "MaxDropper UI loaded!"
 print "Use ShowMaxDropperUI() to open the dialog"
-print "Custom models path functionality enabled"
+print "Scale control added for OBJ export"
